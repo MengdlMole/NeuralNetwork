@@ -1,6 +1,5 @@
 # UTF-8 #
 # python --version: Python 3.9.13 #
-# cuda --version: 
 # cuda --version: 11.6.134 driver #
 import torch
 import numpy
