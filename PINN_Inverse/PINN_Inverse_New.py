@@ -10,7 +10,6 @@ import math
 class NeuralNetwork(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        # the parameter gamma
         self.gamma = torch.nn.Parameter(torch.rand(1, requires_grad=True))
         self.linear_relu_stack = torch.nn.Sequential(
             torch.nn.Linear(1, 40),
@@ -30,31 +29,9 @@ class NeuralNetwork(torch.nn.Module):
     def get_gamma(self):
         return self.gamma
 
-    # loss function depending on the ODEs
-    def loss_of_eq(self, x, y_pred):
-        pi = math.pi
-        # right_item = torch.from_numpy(right_item0.astype(numpy.float32)).to(device)
-        y_pred_grad = torch.autograd.grad(
-            y_pred.sum(), x, create_graph=True)[0]
-        # TODO: There depends what ODEs you want to solve
-        loss = y_pred_grad - self.gamma * (1 + pi * torch.cos(pi * x / 2) / 2)
-        return loss.t() @ loss
-
-    def loss_of_initial(self, initial_point):
-        initial_exact = exactSolution(initial_point)
-        loss = self.linear_tanh_stack(
-            initial_point.unsqueeze(1)) - initial_exact.unsqueeze(1)
-        return loss.t() @ loss
-
-    def loss_of_solution(self, x, y_pred):
-        y_exact = exactSolution(x)
-        loss = y_pred - y_exact
-        return loss.t() @ loss
-
-    def forward(self, x, initial_point):
-        y_pred = self.linear_tanh_stack(x)
-        return self.loss_of_eq(x, y_pred) + self.loss_of_initial(initial_point) + self.loss_of_solution(x, y_pred)
-        # return self.loss_of_eq(x, y_pred) + self.loss_of_initial(model, initial_point)
+    def forward(self, x):
+        solution = self.linear_tanh_stack(x)
+        return solution
 
 
 # define ODEs
@@ -63,15 +40,42 @@ def exactSolution(x):
     return x + torch.sin(pi * x / 2)
 
 
+# loss function depending on the ODEs
+class Loss(torch.nn.Module):
+    def __init__(self):
+        super(Loss, self).__init__()
+
+    def loss_of_eq(self, x, y_pred, gamma):
+        pi = math.pi
+        # right_item = torch.from_numpy(right_item0.astype(numpy.float32)).to(device)
+        y_pred_grad = torch.autograd.grad(
+            y_pred.sum(), x, create_graph=True)[0]
+        # TODO: There depends what ODEs you want to solve
+        loss = y_pred_grad - gamma * (1 + pi * torch.cos(pi * x / 2) / 2)
+        return loss @ loss
+
+    def loss_of_initial(self, model, initial_point):
+        initial_exact = exactSolution(initial_point)
+        loss = model(initial_point.unsqueeze(1)) - initial_exact.unsqueeze(1)
+        return loss.t() @ loss
+
+    def loss_of_solution(self, x, y_pred):
+        y_exact = exactSolution(x)
+        loss = y_pred - y_exact.unsqueeze(1)
+        return loss.t() @ loss
+
+    def forward(self, model, x, y_pred, initial_point, gamma):
+        # y_pred = model(x)
+        return self.loss_of_eq(x, y_pred, gamma) + self.loss_of_initial(model, initial_point) + self.loss_of_solution(x, y_pred)
+
+
 # train code
-def train(device, model, optimizer, loss_fn, x, initial_point):
-    for iter in range(30000):
+def train(model, optimizer, loss_fn, x, initial_point):
+    for iter in range(10000):
         # Compute prediction error
-        result = model(x.unsqueeze(1), initial_point)
-
-        loss = loss_fn(result, torch.tensor(0, dtype=torch.float32).to(device))
-
-        # loss = loss_fn(model, x, initial_point, y_pred, gamma)
+        y_pred = model(x.unsqueeze(1))
+        gamma = model.get_gamma()
+        loss = loss_fn(model, x, y_pred, initial_point, gamma)
         # loss.requires_grad_()
 
         # Backpropagation
@@ -92,8 +96,9 @@ def test(model):
 
 def main():
     # Get cpu or gpu device for training
-    # device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-    device = "cpu"
+    device = "cuda" if torch.cuda.is_available(
+    ) else "mps" if torch.backends.mps.is_available() else "cpu"
+    # device = "cpu"
     # device = "cuda"
     print(f"Using {device} device")
 
@@ -106,10 +111,9 @@ def main():
     # model.train()
     model = NeuralNetwork().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    # gamma = model.get_gamma().to(device)
-    loss_fn = torch.nn.MSELoss()
+    loss_fn = Loss()
 
-    train(device, model, optimizer, loss_fn, x, initial_point)
+    train(model, optimizer, loss_fn, x, initial_point)
 
     print(model.get_gamma())
 
