@@ -37,7 +37,7 @@ class NeuralNetwork(torch.nn.Module):
 # define ODEs
 def exactSolution(x):
     pi = math.pi
-    return x + torch.sin(pi * x / 2)
+    return 2.5 * (x + torch.sin(pi * x / 2))
 
 
 # loss function depending on the ODEs
